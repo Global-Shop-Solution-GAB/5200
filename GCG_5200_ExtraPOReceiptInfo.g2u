@@ -1,0 +1,275 @@
+Program.Sub.ScreenSU.Start
+Gui.FormAdditionalInfo..Create
+Gui.FormAdditionalInfo..Caption("Additional Info")
+Gui.FormAdditionalInfo..Size(10500,4800)
+Gui.FormAdditionalInfo..MinX(0)
+Gui.FormAdditionalInfo..MinY(0)
+Gui.FormAdditionalInfo..Position(0,0)
+Gui.FormAdditionalInfo..BackColor(-2147483633)
+Gui.FormAdditionalInfo..MousePointer(0)
+Gui.FormAdditionalInfo..Event(UnLoad,FormAdditionalInfo_UnLoad)
+Gui.FormAdditionalInfo.GridParts.Create(GsGridControl)
+Gui.FormAdditionalInfo.GridParts.Size(10415,4530)
+Gui.FormAdditionalInfo.GridParts.Position(0,0)
+Gui.FormAdditionalInfo.GridParts.Anchor(15)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'GCG_5200_ExtraPOReceiptInfo.g2u
+'Trey Seddon
+'08/22/2018
+'Kennedy Industries
+'This project will add a window to the PO receipts script 1 button that will display Alternate Description 1 and 2, as well as extra text for the parts on the PO
+'Hooks:
+'15020 Purchasing > Transactions > P.O. Receipts populate
+'15021 Purchasing > Transactions > P.O. Receipts PO selected
+'15050 Purchasing > Transactions > P.O. Receipts Script 1 Button
+'V.Passed.000242 = Script 1 button
+
+V.Local.sError.Declare(String)
+F.Intrinsic.Control.Try
+
+F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+	F.Intrinsic.Control.Case(15020)
+		V.Passed.000242.Set("Additional Info")
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000242, "LOCK", 1)
+		
+	F.Intrinsic.Control.Case(15021)
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000242, "LOCK", 0)
+		
+	F.Intrinsic.Control.Case(15050)
+		F.Intrinsic.Control.CallSub(GetData)
+		F.Intrinsic.Control.CallSub(PopulateGrid)
+		GUI.FormAdditionalInfo..Show
+F.Intrinsic.Control.EndSelect
+
+F.Intrinsic.Control.Catch
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)
+    F.Intrinsic.Control.End
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.GetDataLocation.Start
+V.Local.sError.Declare(String)
+F.Intrinsic.Control.Try
+
+F.Intrinsic.BDF.Load("LineGrid", "AUX001")
+F.Data.DataTable.Create("Parts")
+
+F.Data.DataTable.AddColumn("Parts", "Part", "String")
+F.Data.DataTable.AddColumn("Parts", "Loc", "String")
+F.Data.DataTable.AddColumn("Parts", "Ordered", "String")
+
+V.Local.iRowCount.Declare(Long)
+F.Intrinsic.BDF.ReadRowCount("LineGrid", V.Local.iRowCount)
+F.Intrinsic.Math.Sub(V.Local.iRowCount, 1, V.Local.iRowCount)
+
+'Get the list of parts from the screen
+V.Local.sPart.Declare(String)
+V.Local.sLoc.Declare(String)
+V.Local.sRet.Declare(String)
+V.Local.sOrdered.Declare(String)
+V.Local.sFilter.Declare(String)
+V.Local.iCounter.Declare(Long)
+
+F.Intrinsic.Control.For(V.Local.iCounter, 0, V.Local.iRowCount, 1)
+	F.Intrinsic.BDF.TextMatrix("LineGrid", 1, V.Local.iCounter, V.Local.sPart)
+	F.Intrinsic.BDF.TextMatrix("LineGrid", 3, V.Local.iCounter, V.Local.sLoc)
+	F.Intrinsic.BDF.TextMatrix("LineGrid", 10, V.Local.iCounter, V.Local.sOrdered)
+	
+	'Don't add duplicates
+	F.Intrinsic.String.Build("Part = '{0}' and Loc = '{1}'", V.Local.sPart.Trim, V.Local.sLoc, V.Local.sRet)
+	F.Data.DataTable.Select("Parts", V.Local.sRet, V.Local.sRet)
+	F.Intrinsic.Control.If(V.Local.sRet, =, "***NORETURN***")
+		F.Data.DataTable.AddRow("Parts", "Part", V.Local.sPart.Trim, "Loc", V.Local.sLoc, "Ordered", V.Local.sOrdered.Trim)
+		V.Local.sFilter.Append("Part = '")
+		V.Local.sFilter.Append(V.Local.sPart.Trim)
+		V.Local.sFilter.Append("' or ")
+	F.Intrinsic.Control.EndIf
+	
+F.Intrinsic.Control.Next(V.Local.iCounter)
+
+'Get rid of the last or
+V.Local.iLength.Declare(Long)
+F.Intrinsic.Math.Sub(V.Local.sFilter.Length, 4, V.Local.iLength)
+F.Intrinsic.String.Left(V.Local.sFilter, V.Local.iLength, V.Local.sFilter)
+
+'Get the extra data from the database
+'Alternate description 1 and 2 from INVENTORY_MST2
+'Extra text from INV_EXTRA_TEXT
+F.ODBC.Connection!Conn.OpenCompanyConnection
+V.Local.sSQL.Declare(String)
+F.Intrinsic.String.Build("select RTRIM(Part) as Part, RTRIM(Location) as Loc, RTRIM(DESCRIPTION_2) as DESCRIPTION_2, RTRIM(DESCRIPTION_3) as DESCRIPTION_3 from INVENTORY_MST2 where {0}", V.Local.sFilter, V.Local.sSQL)
+F.Data.DataTable.CreateFromSQL("Descriptions", "Conn", V.Local.sSQL)
+F.Intrinsic.String.Build("select RTRIM(Part) as Part, RTRIM(Text) as Text from INV_EXTRA_TEXT where {0}", V.Local.sFilter, V.Local.sSQL)
+F.Data.DataTable.CreateFromSQL("ExtraText", "Conn", V.Local.sSQL)
+
+F.Data.Linq.Join("LeftJoin", "DataTable", "Parts*!*P", "DataTable", "Descriptions*!*D", "P.Part = D.Part and P.Loc = D.Loc", "DataTable", "ExtraText*!*E", "P.Part = E.Part", "P.Part*!*P.LOC*!*P.Ordered*!*D.DESCRIPTION_2*!*D.DESCRIPTION_3*!*E.TEXT", "", "", "", "AdditionalInfo", True)
+
+F.Data.DataTable.Close("Parts")
+F.Data.DataTable.Close("Descriptions")
+F.Data.DataTable.Close("ExtraText")
+
+F.Intrinsic.Control.Catch
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)
+    F.Intrinsic.Control.End
+F.Intrinsic.Control.EndTry
+Program.Sub.GetDataLocation.End
+
+Program.Sub.GetDataNoLocation.Start
+F.Intrinsic.BDF.Load("LineGrid", "AUX001")
+F.Data.DataTable.Create("Parts")
+
+F.Data.DataTable.AddColumn("Parts", "Part", "String")
+F.Data.DataTable.AddColumn("Parts", "Ordered", "String")
+
+V.Local.iRowCount.Declare(Long)
+F.Intrinsic.BDF.ReadRowCount("LineGrid", V.Local.iRowCount)
+F.Intrinsic.Math.Sub(V.Local.iRowCount, 1, V.Local.iRowCount)
+
+'Get the list of parts from the screen
+V.Local.sPart.Declare(String)
+V.Local.sRet.Declare(String)
+V.Local.iCounter.Declare(Long)
+V.Local.sOrdered.Declare(String)
+V.Local.sFilter.Declare(string)
+
+F.Intrinsic.Control.For(V.Local.iCounter, 0, V.Local.iRowCount, 1)
+	F.Intrinsic.BDF.TextMatrix("LineGrid", 1, V.Local.iCounter, V.Local.sPart)
+	
+	F.Intrinsic.BDF.TextMatrix("LineGrid", 10, V.Local.iCounter, V.Local.sOrdered)
+	
+	'Don't add duplicates
+	F.Intrinsic.String.Build("Part = '{0}'", V.Local.sPart.Trim, V.Local.sRet)
+	F.Data.DataTable.Select("Parts", V.Local.sRet, V.Local.sRet)
+	F.Intrinsic.Control.If(V.Local.sRet, =, "***NORETURN***")
+		F.Data.DataTable.AddRow("Parts", "Part", V.Local.sPart.Trim, "Ordered", V.Local.sOrdered)
+		V.Local.sFilter.Append("Part = '")
+		V.Local.sFilter.Append(V.Local.sPart.Trim)
+		V.Local.sFilter.Append("' or ")
+	F.Intrinsic.Control.EndIf
+	
+F.Intrinsic.Control.Next(V.Local.iCounter)
+
+'Get rid of the last or
+V.Local.iLength.Declare(Long)
+F.Intrinsic.Math.Sub(V.Local.sFilter.Length, 4, V.Local.iLength)
+F.Intrinsic.String.Left(V.Local.sFilter, V.Local.iLength, V.Local.sFilter)
+
+'Get the extra data from the database
+F.ODBC.Connection!Conn.OpenCompanyConnection
+V.Local.sSQL.Declare(String)
+F.Intrinsic.String.Build("select RTRIM(Part) as Part, RTRIM(DESCRIPTION_2) as DESCRIPTION_2, RTRIM(DESCRIPTION_3) as DESCRIPTION_3 from INVENTORY_MST2 where {0}", V.Local.sFilter, V.Local.sSQL)
+F.Data.DataTable.CreateFromSQL("Descriptions", "Conn", V.Local.sSQL)
+F.Intrinsic.String.Build("select RTRIM(Part) as Part, RTRIM(Text) as Text from INV_EXTRA_TEXT where {0}", V.Local.sFilter, V.Local.sSQL)
+F.Data.DataTable.CreateFromSQL("ExtraText", "Conn", V.Local.sSQL)
+
+F.Data.Linq.Join("LeftJoin", "DataTable", "Parts*!*P", "DataTable", "Descriptions*!*D", "P.Part = D.Part", "DataTable", "ExtraText*!*E", "P.Part = E.Part", "P.Part*!*P.Ordered*!*D.DESCRIPTION_2*!*D.DESCRIPTION_3*!*E.TEXT", "", "", "", "AdditionalInfo", True)
+
+F.Data.DataTable.Close("Parts")
+F.Data.DataTable.Close("Descriptions")
+F.Data.DataTable.Close("ExtraText")
+
+F.Intrinsic.Control.Catch
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)
+    F.Intrinsic.Control.End
+F.Intrinsic.Control.EndTry
+Program.Sub.GetDataNoLocation.End
+
+Program.Sub.GetData.Start
+V.Local.sError.Declare(String)
+F.Intrinsic.Control.Try
+
+'Check if location is used
+V.Global.bLoc.Declare(Boolean)
+F.Global.General.ReadOption("400363", 0, False, V.Global.bLoc)
+
+F.Intrinsic.Control.If(V.Global.bLoc)
+	F.Intrinsic.Control.CallSub(GetDataLocation)
+F.Intrinsic.Control.Else
+	F.Intrinsic.Control.CallSub(GetDataNoLocation)
+F.Intrinsic.Control.EndIf
+Program.Sub.GetData.End
+
+Program.Sub.PopulateGrid.Start
+V.Local.sError.Declare(String)
+F.Intrinsic.Control.Try
+
+'Set Icon
+V.Local.sIcon.Declare(String)
+F.Intrinsic.String.Build("{0}\GAB\GAS\gss2.ico",V.Caller.PluginsDir,v.Local.sIcon)
+GUI.FormAdditionalInfo..Icon(V.Local.sIcon)
+
+GUI.FormAdditionalInfo.GridParts.AddGridviewFromDatatable("gvParts", "AdditionalInfo")
+
+'Set properties
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Part", "Caption", "Part")
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Part", "HeaderFontBold", True)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Part", "AllowEdit", False)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Part", "ReadOnly", True)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Part", "MinWidth", 80)
+
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "DESCRIPTION_2", "Caption", "Alternate Description 1")
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "DESCRIPTION_2", "HeaderFontBold", True)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "DESCRIPTION_2", "AllowEdit", False)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "DESCRIPTION_2", "ReadOnly", True)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "DESCRIPTION_2", "MinWidth", 160)
+
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "DESCRIPTION_3", "Caption", "Alternate Description 2")
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "DESCRIPTION_3", "HeaderFontBold", True)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "DESCRIPTION_3", "AllowEdit", False)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "DESCRIPTION_3", "ReadOnly", True)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "DESCRIPTION_3", "MinWidth", 160)
+
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Text", "Caption", "Extra Text")
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Text", "HeaderFontBold", True)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Text", "AllowEdit", False)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Text", "ReadOnly", True)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Text", "MinWidth", 80)
+
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Ordered", "Caption", "Ordered")
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Ordered", "HeaderFontBold", True)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Ordered", "AllowEdit", False)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Ordered", "ReadOnly", True)
+GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Ordered", "MinWidth", 80)
+
+F.Intrinsic.Control.If(V.Global.bLoc)
+	GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "LOC", "Caption", "Loc")
+	GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Loc", "HeaderFontBold", True)
+	GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Loc", "AllowEdit", False)
+	GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Loc", "ReadOnly", True)
+	GUI.FormAdditionalInfo.GridParts.SetColumnProperty("gvParts", "Loc", "MinWidth", 40)
+F.Intrinsic.Control.EndIf
+
+'GUI.FormAdditionalInfo.GridParts.BestFitColumns("gvParts")
+GUI.FormAdditionalInfo.GridParts.SetGridviewProperty("gvParts", "EnableAppearanceOddRow", True)
+GUI.FormAdditionalInfo.GridParts.MainView("gvParts")
+
+F.Intrinsic.Control.Catch
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)
+    F.Intrinsic.Control.End
+F.Intrinsic.Control.EndTry
+Program.Sub.PopulateGrid.End
+
+Program.Sub.FormAdditionalInfo_UnLoad.Start
+V.Local.sError.Declare(String)
+F.Intrinsic.Control.Try
+
+'What to do when closing the window
+F.Data.DataTable.Close("AdditionalInfo")
+F.ODBC.Connection!Conn.Close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.Catch
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)
+    F.Intrinsic.Control.End
+F.Intrinsic.Control.EndTry
+Program.Sub.FormAdditionalInfo_UnLoad.End
